@@ -1,0 +1,3 @@
+rootProject.name = "HLS_STOP_AndroidStudio"
+include ':app'
+include ':openCV'
