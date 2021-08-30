@@ -27,19 +27,19 @@
         />
 
     <TextView
-        android:id="@+id/temp"
+        android:id="@+id/dist"
         android:layout_width="match_parent"
         android:layout_height="80dp"
-        android:textSize ="50sp"
         android:gravity="center_horizontal"
-        android:hint="거리" />
+        android:hint="거리"
+        android:textSize="50sp" />
 
     <TextView
-        android:id="@+id/humd"
+        android:id="@+id/velo"
         android:layout_width="match_parent"
         android:layout_height="80dp"
         android:textSize="50sp"
         android:gravity="center_horizontal"
-        android:hint="습도" />
+        android:hint="속도" />
 
 </LinearLayout>

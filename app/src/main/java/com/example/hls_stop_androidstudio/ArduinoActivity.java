@@ -9,8 +9,10 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.speech.tts.TextToSpeech;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -20,10 +22,13 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
 import app.akexorcist.bluetotohspp.library.BluetoothSPP;
+
+import static android.speech.tts.TextToSpeech.ERROR;
 
 public class ArduinoActivity extends AppCompatActivity {
 
@@ -43,12 +48,24 @@ public class ArduinoActivity extends AppCompatActivity {
     Button btnBTOn;
     Button btnGetResult;
 
+    private TextToSpeech txtSpeech;
+
     final static UUID BT_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_arduino);
+
+        txtSpeech = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int i) {
+                if(i != ERROR)
+                {
+                    txtSpeech.setLanguage(Locale.KOREAN);
+                }
+            }
+        });
 
         btnBTOn = findViewById(R.id.btn_btOn);
         btnGetResult = findViewById(R.id.btn_getResult);
@@ -62,11 +79,13 @@ public class ArduinoActivity extends AppCompatActivity {
             public void onClick(View view) {
                 if(bluetoothAdapter == null) {
                     Toast.makeText(getApplicationContext(), "블루투스를 지원하지 않는 기기입니다.", Toast.LENGTH_SHORT).show();
+                    FuncVoiceOut("블루투스를 지원하지 않는 기기입니다.");
                 }
                 else {
                     if (!bluetoothAdapter.isEnabled()) {
                         Intent intent = new Intent(bluetoothAdapter.ACTION_REQUEST_ENABLE);
                         startActivityForResult(intent, BLUETOOTH_REQUEST_CODE);
+                        FuncVoiceOut("블루투스를 사용하려면 오른쪽 아래의 사용을 눌러주세요.");
                         btnBTOn.setText("블루투스 끄기");
                     }
                     else
@@ -85,13 +104,13 @@ public class ArduinoActivity extends AppCompatActivity {
                 {
                     public void onDataReceived(byte[] data, String text)
                     {
-                        TextView temp = findViewById(R.id.temp);
-                        TextView humd = findViewById(R.id.humd);
+                        TextView dist = findViewById(R.id.dist);
+                        TextView velo = findViewById(R.id.velo);
 
-                        String[] array = text.split(",");
+                        String[] array = text.split(".");
 
-                        temp.setText(array[0].concat("C"));
-                        humd.setText(array[1].concat("%") );
+                        dist.setText(array[0].concat("m"));
+                        //velo.setText(array[1].concat("m/s") );
 
                     }
                 });
@@ -129,6 +148,7 @@ public class ArduinoActivity extends AppCompatActivity {
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("블루투스 장치 선택");
+        FuncVoiceOut("블루투스 장치를 선택해주세요.");
 
         List<String> deviceLists = new ArrayList<>();
         for(BluetoothDevice device : pairedDevices)
@@ -183,7 +203,7 @@ public class ArduinoActivity extends AppCompatActivity {
                         public void run() {
                             Toast.makeText(getApplicationContext(),
                                     deviceName + "연결 완료", Toast.LENGTH_LONG).show();
-
+                            FuncVoiceOut("블루투스 연결이 완료되었습니다.");
                             mDialog.dismiss();
                         }
                     });
@@ -196,6 +216,7 @@ public class ArduinoActivity extends AppCompatActivity {
                             mDialog.dismiss();
                             Toast.makeText(getApplicationContext(),
                                     "블루투스 연결 오류",Toast.LENGTH_SHORT).show();
+                            FuncVoiceOut("블루투스 연결 오류");
                         }
                     });
                 }
@@ -226,4 +247,27 @@ public class ArduinoActivity extends AppCompatActivity {
 
     }
 
+    private void FuncVoiceOut(String OutMsg) {
+        if (OutMsg.length() < 1) return;
+
+        txtSpeech.setPitch(1.0f);//목소리 톤1.0
+        txtSpeech.setSpeechRate(1.0f);//목소리 속도
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            txtSpeech.speak(OutMsg, TextToSpeech.QUEUE_FLUSH, null, null);
+        }
+        else
+        {
+            txtSpeech.speak(OutMsg, TextToSpeech.QUEUE_FLUSH, null);
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if(txtSpeech != null){
+            txtSpeech.stop();
+            txtSpeech.shutdown();
+            txtSpeech = null;
+        }
+    }
 }

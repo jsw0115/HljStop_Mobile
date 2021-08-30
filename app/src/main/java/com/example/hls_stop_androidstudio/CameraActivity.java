@@ -9,8 +9,10 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.speech.tts.TextToSpeech;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Toast;
@@ -40,13 +42,16 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+
+import static android.speech.tts.TextToSpeech.ERROR;
 
 public class CameraActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2{
 
     final int MY_PERMISSION_REQUEST_CODE = 100;
     int counter = 0;
 
-    AssetManager assetManager;
+    private TextToSpeech txtSpeech;
 
     CameraBridgeViewBase cameraBridgeViewBase;
     BaseLoaderCallback baseLoaderCallback;
@@ -99,6 +104,16 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_camera);
 
+        txtSpeech = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int i) {
+                if(i != ERROR)
+                {
+                    txtSpeech.setLanguage(Locale.KOREAN);
+                }
+            }
+        });
+
         cameraBridgeViewBase = (JavaCameraView)findViewById(R.id.CameraView);
         cameraBridgeViewBase.setVisibility(SurfaceView.VISIBLE);
         cameraBridgeViewBase.setCvCameraViewListener(this);
@@ -138,6 +153,7 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
             if(grantResults[0] == 0)
             {
                 Toast.makeText(getApplicationContext(), "승인됨", Toast.LENGTH_SHORT).show();
+
             }
             else
             {
@@ -231,6 +247,23 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
                     Imgproc.putText(frame, cocoNames.get(idGuy)+" "+intConf + "%", box.tl(), Core.FONT_HERSHEY_SIMPLEX, 2, new Scalar(0, 255, 0), 2);
 
                     Imgproc.rectangle(frame, box.tl(), box.br(), new Scalar(255, 0, 0), 2);
+                    
+                    if(cocoNames.get(idGuy) == "a person")
+                    {
+                        FuncVoiceOut("사람");
+                    }
+                    else if(cocoNames.get(idGuy) == "a bus")
+                    {
+                        FuncVoiceOut("버스");
+                    }
+                    else if(cocoNames.get(idGuy) == "a bicycle")
+                    {
+                        FuncVoiceOut("자전거");
+                    }
+                    else if(cocoNames.get(idGuy) == "a car")
+                    {
+                        FuncVoiceOut("자동차");
+                    }
                 }
             }
         }
@@ -283,6 +316,26 @@ public class CameraActivity extends AppCompatActivity implements CameraBridgeVie
         if(cameraBridgeViewBase != null)
         {
             cameraBridgeViewBase.disableView();
+        }
+
+        if(txtSpeech != null){
+            txtSpeech.stop();
+            txtSpeech.shutdown();
+            txtSpeech = null;
+        }
+    }
+
+    private void FuncVoiceOut(String OutMsg) {
+        if (OutMsg.length() < 1) return;
+
+        txtSpeech.setPitch(1.0f);//목소리 톤1.0
+        txtSpeech.setSpeechRate(1.0f);//목소리 속도
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            txtSpeech.speak(OutMsg, TextToSpeech.QUEUE_FLUSH, null, null);
+        }
+        else
+        {
+            txtSpeech.speak(OutMsg, TextToSpeech.QUEUE_FLUSH, null);
         }
     }
 }
