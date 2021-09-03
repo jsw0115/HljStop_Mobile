@@ -13,13 +13,16 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.speech.tts.TextToSpeech;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -29,6 +32,8 @@ import java.util.UUID;
 import app.akexorcist.bluetotohspp.library.BluetoothSPP;
 
 import static android.speech.tts.TextToSpeech.ERROR;
+import static app.akexorcist.bluetotohspp.library.BluetoothState.MESSAGE_READ;
+import static app.akexorcist.bluetotohspp.library.BluetoothState.MESSAGE_WRITE;
 
 public class ArduinoActivity extends AppCompatActivity {
 
@@ -43,10 +48,18 @@ public class ArduinoActivity extends AppCompatActivity {
     InputStream mInputStream = null;
     OutputStream mOutputStream = null;
 
+    Handler mHandler;
+
+    int readBufferPosition;
+    byte[] readBuffer;
+    Thread mWorkedThread;
+    byte mDelimiter = 10;
+
     public ProgressDialog mDialog;
 
     Button btnBTOn;
     Button btnGetResult;
+    TextView distance;
 
     private TextToSpeech txtSpeech;
 
@@ -69,10 +82,12 @@ public class ArduinoActivity extends AppCompatActivity {
 
         btnBTOn = findViewById(R.id.btn_btOn);
         btnGetResult = findViewById(R.id.btn_getResult);
+        distance = findViewById(R.id.dist);
 
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
         Set<BluetoothDevice> mDevice = bluetoothAdapter.getBondedDevices();
+        bluetoothSPP = new BluetoothSPP(this);
 
         btnBTOn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -86,36 +101,37 @@ public class ArduinoActivity extends AppCompatActivity {
                         Intent intent = new Intent(bluetoothAdapter.ACTION_REQUEST_ENABLE);
                         startActivityForResult(intent, BLUETOOTH_REQUEST_CODE);
                         FuncVoiceOut("블루투스를 사용하려면 오른쪽 아래의 사용을 눌러주세요.");
-                        btnBTOn.setText("블루투스 끄기");
+                        btnBTOn.setText("블루투스 장치 선택");
                     }
                     else
                     {
-
+                        if (mDevice.size() > 0) {
+                            GetListDevicePaired();
+                        }
+                        btnBTOn.setText("블루투스 장치 선택");
                     }
                 }
-
             }
         });
 
-        btnGetResult.setOnClickListener(new View.OnClickListener() {
+        /*
+        bluetoothSPP.setOnDataReceivedListener(new BluetoothSPP.OnDataReceivedListener() {
+            //데이터 수신되면
+            public void onDataReceived(byte[] data, String message) {
+                Toast.makeText(ArduinoActivity.this, message, Toast.LENGTH_SHORT).show(); // 토스트로 데이터 띄움
+            }
+        });
+
+
+        bluetoothSPP.setOnDataReceivedListener(new BluetoothSPP.OnDataReceivedListener() {
             @Override
-            public void onClick(View view) {
-                bluetoothSPP.setOnDataReceivedListener(new BluetoothSPP.OnDataReceivedListener()
-                {
-                    public void onDataReceived(byte[] data, String text)
-                    {
-                        TextView dist = findViewById(R.id.dist);
-                        TextView velo = findViewById(R.id.velo);
-
-                        String[] array = text.split(".");
-
-                        dist.setText(array[0].concat("m"));
-                        //velo.setText(array[1].concat("m/s") );
-
-                    }
-                });
+            public void onDataReceived(byte[] data, String message) {
+                distance.setText(message);
             }
         });
+
+         */
+
     }
 
     protected void onActivityResult(int requestCode, int resultCode, Intent data)
@@ -126,6 +142,7 @@ public class ArduinoActivity extends AppCompatActivity {
                 if(resultCode == RESULT_OK)
                 {
                     Set<BluetoothDevice> mDevice = bluetoothAdapter.getBondedDevices();
+
                     if (mDevice.size() > 0) {
                         GetListDevicePaired();
                     }
@@ -189,7 +206,6 @@ public class ArduinoActivity extends AppCompatActivity {
         Thread connect = new Thread(new Runnable() {
             @Override
             public void run() {
-
                 try
                 {
                     bluetoothSocket = bluetoothDevice.createRfcommSocketToServiceRecord(BT_UUID);
@@ -198,12 +214,14 @@ public class ArduinoActivity extends AppCompatActivity {
                     mInputStream = bluetoothSocket.getInputStream();
                     mOutputStream = bluetoothSocket.getOutputStream();
 
+                    ReadData();
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
                             Toast.makeText(getApplicationContext(),
                                     deviceName + "연결 완료", Toast.LENGTH_LONG).show();
                             FuncVoiceOut("블루투스 연결이 완료되었습니다.");
+                            btnBTOn.setText("블루투스 OFF");
                             mDialog.dismiss();
                         }
                     });
@@ -240,12 +258,61 @@ public class ArduinoActivity extends AppCompatActivity {
         return selectedDevice;
     }
 
-    void ReceptionData()
+    void ReadData()
     {
         final Handler handler = new Handler();
 
+        readBuffer = new byte[1024];
+        readBufferPosition = 0;
 
+        mWorkedThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while(!Thread.currentThread().isInterrupted())
+                {
+                    try
+                    {
+                        int bytesAvailable = mInputStream.available();
+                        if(bytesAvailable > 0)
+                        {
+                            byte[] packetBytes = new byte[bytesAvailable];
+                            mInputStream.read(packetBytes);
+                            for(int i = 0; i < bytesAvailable; i++)
+                            {
+                                byte b = packetBytes[i];
+                                if(b == mDelimiter)
+                                {
+                                    byte[] encodedBytes = new byte[readBufferPosition];
+                                    System.arraycopy(readBuffer, 0, encodedBytes,0, encodedBytes.length);
+                                    final String data = new String(encodedBytes, "US-ASCII");
+                                    readBufferPosition = 0;
+
+                                    handler.post(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            distance.setText(data + " m");
+                                        }
+                                    });
+                                }
+                                else
+                                {
+                                    readBuffer[readBufferPosition++] = b;
+                                }
+                            }
+                        }
+
+                    }
+                    catch (IOException ex)
+                    {
+                        finish();
+                    }
+                }
+            }
+        });
+
+        mWorkedThread.start();
     }
+
 
     private void FuncVoiceOut(String OutMsg) {
         if (OutMsg.length() < 1) return;
@@ -268,6 +335,18 @@ public class ArduinoActivity extends AppCompatActivity {
             txtSpeech.stop();
             txtSpeech.shutdown();
             txtSpeech = null;
+        }
+
+        try
+        {
+            mWorkedThread.interrupt();
+            mInputStream.close();
+            mOutputStream.close();
+            bluetoothSocket.close();
+        }
+        catch (Exception e)
+        {
+            super.onDestroy();
         }
     }
 }
